@@ -3,8 +3,8 @@ title: "Dinámica delictiva, eventos deportivos y euforia colectiva: evidencia d
 author: "Victor Sarmiento"
 date: last-modified
 abstract: > 
-  Este reporte contiene un análisis de calidad de los datos
-  usados en la presente investigación.
+  Este reporte contiene el análisis econometrico
+  que conduce esta investigación.
 lang: es
 format: 
   html:
@@ -17,6 +17,8 @@ execute:
   warning: false
 ---
 
+## Configuración
+
 ```{r}
 library(tidyverse)
 library(sf)
@@ -24,25 +26,27 @@ library(lubridate)
 library(geosphere)
 library(fastDummies)
 library(DT)
+library(MASS)
+```
 
+## Datos
+
+```{r}
 homicidios <- read_rds(file = here::here("data/processed/homicidios.rds"))
 hurtos <- read_rds(file = here::here("data/processed/hurtos.rds"))
 partidos <- read_rds(file = here::here("data/processed/game_characteristics.rds"))
-
 ```
 
 ## Especificación Económetrica
 
+### Estrategia 1
+
+#### Crimenes consolidados
+
+Primero unimos los datos de hurtos y homicidios entre 2019 y 2022, calculamos la distacia del crimen al lugar del partido,
+completamos la fechas en las que hubo crimenes con ceros y creamos una dummy que reconoce que dias hubo partido.
 ```{r}
-
-# ECONOMETRIC ANALYSIS
-
-library(MASS)
-
-# ESTRATEGIA 1
-
 ## DID - ALL CRIMES
-
 partidos_america <- partidos |>
   filter(Local %in% c("CD América")) |>
   filter(Sedes == "Estadio Olímpico Pascual Guerrero") |>
@@ -141,7 +145,6 @@ df_crimes <-
   )
 
 
-
 data_reg <-
   df_crimes |>
   mutate(
@@ -149,17 +152,37 @@ data_reg <-
     event = as.character(event)
   )
 
+```
+
+Luego calculamos una primera regresion suponiendo que no hay interacción entre los crimenes cerca o lejos del lugar
+del partido y el dia en el que hubo partido.
+
+```{r}
+
 m1 <- glm.nb(n ~ ring_1 + event + YEAR + MONTH + DOW, data = data_reg)
 
 
 summary(m1)
+```
+
+Luego calculamos otra regresion permitiendo que interactuen los crimenes cerca o lejos del lugar
+del partido y el dia en el que hubo partido.
+
+```{r}
 
 m2 <- glm.nb(n ~ ring_1 + event + ring_1 * event + YEAR + MONTH + DOW, data = data_reg)
 
 
 summary(m2)
 
+```
 
+#### Hurtos
+
+Ahora veamos el efecto por separado. Volvemos a seleccionar y ajustar los datos como antes pero
+solo lo hacemos para los hurtos.
+
+```{r}
 ## DID - HURTOS
 
 fechas_partidos <- partidos_america |>
@@ -207,14 +230,23 @@ data_reg <-
     ring_1 = as.character(ring_1),
     event = as.character(event)
   )
+```
 
+Calculamos una regresion permitiendo que interactuen los hurtos cerca o lejos del lugar
+del partido y el dia en el que hubo partido.
 
+```{r}
 m3 <- glm.nb(n ~ ring_1 + event + ring_1 * event + YEAR + MONTH + DOW, data = data_reg)
 
 
 summary(m3)
+```
 
+#### Homicidios
 
+Ahora para homicidios. Volvemos a seleccionar y ajustar los datos como antes pero solo lo hacemos para los homicidios.
+
+```{r}
 ## DID - HOMICIDIOS
 
 fechas_partidos <- partidos_america |>
@@ -263,11 +295,24 @@ data_reg <-
     event = as.character(event)
   )
 
+```
+
+Calculamos una regresion permitiendo que interactuen los homicidios cerca o lejos del lugar
+del partido y el dia en el que hubo partido.
+
+```{r}
 
 m4 <- glm.nb(n ~ ring_1 + event + ring_1 * event + YEAR + MONTH + DOW, data = data_reg)
 
 
 summary(m4)
+```
+
+### Estrategia 2
+
+```{r}
+
+# ECONOMETRIC ANALYSIS
 
 
 # ESTRATEGIA 2
