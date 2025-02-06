@@ -24,103 +24,931 @@ library(lubridate)
 library(geosphere)
 library(fastDummies)
 library(DT)
-```
 
-## Datos
-
-A continuación se describen las fuentes de información usadas en esta investigación.
-
-### Homicidios georreferenciados en Santiago de Cali
-
-Puntualmente se cuenta con homicidios desde 2014 hasta mitad de 2024.
-
-```{r}
 homicidios <- read_rds(file = here::here("data/processed/homicidios.rds"))
-
-homicidios |> 
-  tail(100) |> 
-  datatable()
-```
-
-<br>
-La unidad de análisis es el hecho, es decir, cada fila es un evento criminal (en este caso un homicidio) que tiene asociadas las siguientes variables:
-
-
-```{r}
-names(homicidios)
-```
-
-Los datos fueron solicitados al Observatorio de Seguridad de la Alcaldia de Santiago de Cali.
-
-### Hurtos georreferenciados en Santiago de Cali
-
-Puntualmente se cuenta con hurtos georreferenciados desde 2019 hasta mitad de 2024, aunque solo hasta 2022 están georreferenciados.
-
-```{r}
 hurtos <- read_rds(file = here::here("data/processed/hurtos.rds"))
-
-hurtos |> 
-  tail(100) |> 
-  datatable()
-```
-
-<br>
-La unidad de análisis es el hecho, es decir, cada fila es un evento criminal (en este caso un hurto) que tiene asociadas las siguientes variables:
-
-```{r}
-names(hurtos)
-```
-
-Los datos fueron solicitados al Observatorio de Seguridad de la Alcaldia de Santiago de Cali.
-
-
-### Partidos de futbol profesional colombiano
-
-Puntualmente, se cuenta con una tabla que contiene información cada una de las fechas en las que hubo partidos de futbol que se jugaron en Colombia entre 2014 y 2023. 
-
-```{r}
 partidos <- read_rds(file = here::here("data/processed/game_characteristics.rds"))
 
-partidos |> 
-  tail(100) |> 
-  datatable()
 ```
 
-<br>
-La unidad de analisis en este caso es el dia en que ocurrió el partido, es decir, cada fila es un dia en el que ocurre un partido de futbol que tiene asociadas las siguientes variables:
+## Especificación Económetrica
 
 ```{r}
-names(partidos)
-```
 
-Los datos fueron extraidos de fbref.com (un sitio web dedicado al seguimiento de estadísticas de equipos de fútbol y jugadores de todo el mundo).
+# ECONOMETRIC ANALYSIS
 
-### Cuotas de partidos del futbol profesional colombiano
+library(MASS)
 
-Puntualmente, se cuenta con una tabla que contiene información cada una de las fechas en las que hubo partidos de futbol que se jugaron en Colombia entre 2014 y 2023 junto a la respectiva cuota o probabilidad de ganar, empatar o perder, antes de iniciar el partido.
+# ESTRATEGIA 1
 
-```{r}
-historical_odds_colombia <- read_delim(
-  file = here::here("data/raw/historical_odds_colombia_primera_a.csv"),
-  delim = ';'
+## DID - ALL CRIMES
+
+partidos_america <- partidos |>
+  filter(Local %in% c("CD América")) |>
+  filter(Sedes == "Estadio Olímpico Pascual Guerrero") |>
+  mutate(
+    Asistencia = replace_na(Asistencia, 0),
+    Temporada = year(Fecha),
+    Win = case_when(
+      Home_marcador > Away_marcador ~ 1,
+      TRUE ~ 0
+    ),
+    Tie = case_when(
+      Home_marcador == Away_marcador ~ 1,
+      TRUE ~ 0
+    ),
+    Loss = case_when(
+      Home_marcador < Away_marcador ~ 1,
+      TRUE ~ 0
+    )
+  ) |>
+  mutate(
+    Fecha_inicio = ymd_hms(paste0(Fecha, " ", Hora)),
+    Id = seq_len(n())
+  )
+
+sf_estadios <- tibble(
+  NOMBRE = "Estadio Olímpico Pascual Guerrero",
+  X = -76.5436085,
+  Y = 3.4298687
+) |>
+  st_as_sf(
+    coords = c("X", "Y"),
+    crs = 4326,
+    remove = FALSE
+  )
+
+pt_estadios <- sf_estadios |>
+  dplyr::select(X, Y) |>
+  st_drop_geometry() |>
+  as.matrix()
+
+# geosphere functions return meters. If you want miles:
+meters_to_miles <- (1 / 1609.344)
+
+fechas_partidos <- partidos_america |>
+  mutate(Year = as.numeric(format(Fecha_inicio, format = "%Y"))) |>
+  filter(Year %in% c(2019:2022)) |> 
+  pull(Fecha)
+
+df_crimes <-
+  homicidios |>
+  filter(YEAR %in% c(2019:2022)) |>
+  mutate(
+    TIPO_CRIMEN = "HOMICIDIOS",
+    COMUNA = as.character(COMUNA)
+  ) |>
+  bind_rows(
+    hurtos |>
+    mutate(TIPO_CRIMEN = "HURTOS")
+  ) |>
+  mutate(
+    dist_num = distGeo(pt_estadios, cbind(X, Y)) * meters_to_miles
+  ) |>
+  mutate(
+    ring_1 = case_when(
+      dist_num <= 1 ~ 1,
+      TRUE ~  0
+    )
+  ) |> 
+  group_by(FECHA, ring_1) |>
+  summarise(
+    n = n()
+  ) |>
+  ungroup() |>
+  group_by(ring_1)  |>
+  complete(
+    FECHA = as.character(
+      seq.Date(
+        min(as.Date(FECHA)),
+        max(as.Date(FECHA)),
+        by="day"
+      )
+    )
+  ) |>
+  mutate(n = replace_na(n, 0)) |>
+  #mutate(
+  #  FECHA =as.Date(FECHA)
+  #)
+  mutate(
+    event = case_when(
+      FECHA %in% fechas_partidos ~ 1,
+      TRUE ~  0
+    ),
+    YEAR = format(as.Date(FECHA), "%Y"),
+    MONTH = format(as.Date(FECHA), "%m"),
+    DOW = as.character(wday(as.Date(FECHA), week_start=7))
+  )
+
+
+
+data_reg <-
+  df_crimes |>
+  mutate(
+    ring_1 = as.character(ring_1),
+    event = as.character(event)
+  )
+
+m1 <- glm.nb(n ~ ring_1 + event + YEAR + MONTH + DOW, data = data_reg)
+
+
+summary(m1)
+
+m2 <- glm.nb(n ~ ring_1 + event + ring_1 * event + YEAR + MONTH + DOW, data = data_reg)
+
+
+summary(m2)
+
+
+## DID - HURTOS
+
+fechas_partidos <- partidos_america |>
+  mutate(Year = as.numeric(format(Fecha_inicio,, format = "%Y"))) |>
+  filter(Year %in% c(2019:2022)) |> 
+  pull(Fecha)
+
+df_crimes_hurtos <- 
+  hurtos |> 
+  mutate(
+    dist_num = distGeo(pt_estadios, cbind(X, Y)) * meters_to_miles
+  )|>
+  mutate(
+    ring_1 = case_when(
+      dist_num <= 1 ~ 1,
+      TRUE ~  0
+    )
+  ) |> 
+  group_by(FECHA, ring_1) |> 
+  summarise(
+    n = n()
+  ) |> 
+  ungroup() |> 
+  group_by(ring_1)  |>
+  complete(FECHA = as.character(seq.Date(min(as.Date(FECHA)), max(as.Date(FECHA)), by="day"))) |> 
+  mutate(n = replace_na(n, 0)) |>
+  #mutate(
+  #  FECHA =as.Date(FECHA)
+  #)
+  mutate(
+    event = case_when(
+      FECHA %in% fechas_partidos ~ 1,
+      TRUE ~  0
+    ),
+    YEAR = format(as.Date(FECHA),"%Y"),
+    MONTH = format(as.Date(FECHA),"%m"),
+    DOW = as.character(wday(as.Date(FECHA), week_start=7))
+  )
+
+
+
+data_reg <- 
+  df_crimes_hurtos |> 
+  mutate(
+    ring_1 = as.character(ring_1),
+    event = as.character(event)
+  )
+
+
+m3 <- glm.nb(n ~ ring_1 + event + ring_1 * event + YEAR + MONTH + DOW, data = data_reg)
+
+
+summary(m3)
+
+
+## DID - HOMICIDIOS
+
+fechas_partidos <- partidos_america |>
+  mutate(Year = as.numeric(format(Fecha_inicio, format = "%Y"))) |>
+  #filter(Year %in% c(2019:2022)) |> 
+  pull(Fecha)
+
+df_crimes_homicidios <-
+  homicidios |>
+  mutate(
+    dist_num = distGeo(pt_estadios, cbind(X, Y)) * meters_to_miles
+  )|>
+  mutate(
+    ring_1 = case_when(
+      dist_num <= 1 ~ 1,
+      TRUE ~  0
+    )
+  ) |>
+  group_by(FECHA, ring_1) |> 
+  summarise(
+    n = n()
+  ) |>
+  ungroup() |>
+  group_by(ring_1)  |>
+  complete(FECHA = as.character(seq.Date(min(as.Date(FECHA)), max(as.Date(FECHA)), by="day"))) |>
+  mutate(n = replace_na(n, 0)) |>
+  #mutate(
+  #  FECHA =as.Date(FECHA)
+  #)
+  mutate(
+    event = case_when(
+      FECHA %in% fechas_partidos ~ 1,
+      TRUE ~  0
+    ),
+    YEAR = format(as.Date(FECHA),"%Y"),
+    MONTH = format(as.Date(FECHA),"%m"),
+    DOW = as.character(wday(as.Date(FECHA), week_start=7))
+  )
+
+
+
+data_reg <- 
+  df_crimes_homicidios |> 
+  mutate(
+    ring_1 = as.character(ring_1),
+    event = as.character(event)
+  )
+
+
+m4 <- glm.nb(n ~ ring_1 + event + ring_1 * event + YEAR + MONTH + DOW, data = data_reg)
+
+
+summary(m4)
+
+
+# ESTRATEGIA 2
+
+fechas_partidos <- partidos_america |>
+  mutate(Year = as.numeric(format(Fecha_inicio, format = "%Y"))) |>
+  filter(Year %in% c(2019:2022)) |>
+  pull(Fecha)
+
+df_crimes_example <-
+  hurtos |>
+  filter(FECHA %in% fechas_partidos) |>
+  mutate(
+    TIPO_CRIMEN = "HURTOS",
+    COMUNA = as.character(COMUNA)
+  ) |>
+  mutate(
+    dist_num = distGeo(pt_estadios, cbind(X, Y)) * meters_to_miles
+  ) |>
+  mutate(
+    rings = case_when(
+      dist_num <= 1 ~ 1,
+      dist_num > 1 & dist_num <= 2 ~ 2,
+      dist_num > 2 & dist_num <= 3 ~ 3,
+      # dist_num > 3 & dist_num <= 4 ~ 4,
+      # dist_num > 4 & dist_num <= 5 ~ 5,
+      TRUE ~  0
+    )
+  )
+
+horario_partidos <- partidos_america |>
+  mutate(Year = as.numeric(format(Fecha_inicio, format = "%Y"))) |>
+  filter(Year %in% c(2019:2022)) |>
+  pull(Fecha_inicio)
+
+
+df_results <- data.frame()
+
+for (i in seq_along(horario_partidos)) {
+
+  df_temp <- df_crimes_example |>
+    filter(
+      HORARIO <= (horario_partidos[i] + hours(3)) &
+        HORARIO >= (horario_partidos[i] - hours(3))
+    ) |>
+    mutate(Fecha_inicio = horario_partidos[i])|>
+    mutate(
+      min_diff = as.numeric(
+      difftime(
+        time1 = HORARIO,
+        time2 = Fecha_inicio,
+        units = "mins"
+      )
+    )/ 30
+    )|>
+    mutate(
+    min_diff_cat = cut(
+    min_diff,
+    breaks = c(-7:6),             # Corrected breaks
+    labels =  as.character(-6:6),             # Corrected labels
+    #include.lowest = TRUE,       # Include the lowest boundary
+    right = FALSE                # Left-closed intervals
+  )
+    ) |>
+    filter(!is.na(min_diff_cat))
+
+  #df_temp_2 <- df_crimes_example |>
+  #filter(
+  #  HORARIO <= (horario_partidos[i] + hours(3)) &
+  #    HORARIO >= (horario_partidos[i] - hours(3))
+  #)
+
+  df_results <- bind_rows(df_results,df_temp)
+
+}
+
+df_crime_e2 <- df_results|>
+  mutate_if(is.factor, as.character) |>
+  group_by(Fecha_inicio, rings,min_diff_cat) |>
+  summarise(
+    n = n()
+  ) |>
+  ungroup() |>
+  group_by(Fecha_inicio, rings) |>
+  complete(
+    min_diff_cat = as.character(seq(from = -6, to = 6, by = 1))
+  )|>
+  mutate(n = replace_na(n, 0)) |>
+  mutate(
+    min_diff_cat = case_when(
+      as.numeric(min_diff_cat) < 0 ~ paste0("minus",gsub(pattern = "-", replacement = "", x = min_diff_cat)),
+      as.numeric(min_diff_cat) >= 0 ~ min_diff_cat,
+      TRUE ~ NA_character_
+    )
+  )
+
+
+data_reg <- df_crime_e2 |>
+  rename("Time" = "min_diff_cat")  |>
+  dummy_cols(select_columns = "Time") |>
+  dplyr::select(n, rings, starts_with("Time_"))
+
+# formula <- as.formula(
+#   paste(
+#     "n ~ ", 
+#     paste0("Time_", c(paste0("minus", abs(-6:-1)), 0, 1:6), collapse = " + ")
+#   )
+# )
+
+formula <- as.formula(
+  paste(
+    "n ~ ", 
+    paste0(c(
+      "Time_minus6",
+      "Time_minus5",
+      "Time_minus4",
+      "Time_minus3",
+      "Time_minus2",
+      "Time_minus1",
+      "Time_0",
+      "Time_1",
+      "Time_2",
+      "Time_3",
+      "Time_4",
+      "Time_5"
+      #"Time_6"
+    ), collapse = " + ")
+
+  )
 )
 
-historical_odds_colombia |> 
-  tail(100) |> 
-  datatable()
+mf <- lm(formula, data = data_reg)
+
+summary(mf)
+
+mr_0 <- lm(formula, data = data_reg |> filter(rings == 0))
+
+summary(mr_0)
+
+mr_1 <- lm(formula, data = data_reg |> filter(rings == 1))
+
+summary(mr_1)
+
+mr_2 <- lm(formula, data = data_reg |> filter(rings == 2))
+
+summary(mr_2)
+
+mr_3 <- lm(formula, data = data_reg |> filter(rings == 3))
+
+summary(mr_3)
+
+
+
+# ESTRATEGIA 3
+
+fechas_partidos <- partidos_america |>
+  mutate(Year = as.numeric(format(Fecha_inicio, format = "%Y"))) |>
+  filter(Year %in% c(2019:2022)) |>
+  pull(Fecha)
+
+df_crimes_example <-
+  hurtos |>
+  filter(FECHA %in% fechas_partidos) |>
+  mutate(
+    TIPO_CRIMEN = "HURTOS",
+    COMUNA = as.character(COMUNA)
+  ) |>
+  mutate(
+    dist_num = distGeo(pt_estadios, cbind(X, Y)) * meters_to_miles
+  ) |>
+  mutate(
+    rings = case_when(
+      dist_num <= 1 ~ 1,
+      dist_num > 1 & dist_num <= 2 ~ 2,
+      dist_num > 2 & dist_num <= 3 ~ 3,
+      # dist_num > 3 & dist_num <= 4 ~ 4,
+      # dist_num > 4 & dist_num <= 5 ~ 5,
+      TRUE ~  0
+    )
+  )
+
+horario_partidos <- partidos_america |>
+  mutate(Year = as.numeric(format(Fecha_inicio, format = "%Y"))) |>
+  filter(Year %in% c(2019:2022)) |>
+  pull(Fecha_inicio)
+
+
+df_results <- data.frame()
+
+for (i in seq_along(horario_partidos)) {
+
+  df_temp <- df_crimes_example |>
+    filter(
+      HORARIO <= (horario_partidos[i] + hours(10)) &
+        HORARIO >= (horario_partidos[i] - hours(10))
+    ) |>
+    mutate(Fecha_inicio = horario_partidos[i])|>
+    mutate(
+      min_diff = as.numeric(
+      difftime(
+        time1 = HORARIO,
+        time2 = Fecha_inicio,
+        units = "mins"
+      )
+    )/ 30
+    )|>
+    mutate(
+    min_diff_cat = cut(
+    min_diff,
+    breaks = c(-21:20),             # Corrected breaks
+    labels =  as.character(-20:20),             # Corrected labels
+    #include.lowest = TRUE,       # Include the lowest boundary
+    right = FALSE                # Left-closed intervals
+  )
+    ) |>
+    filter(!is.na(min_diff_cat))
+
+  #df_temp_2 <- df_crimes_example |>
+  #filter(
+  #  HORARIO <= (horario_partidos[i] + hours(3)) &
+  #    HORARIO >= (horario_partidos[i] - hours(3))
+  #)
+
+  df_results <- bind_rows(df_results,df_temp)
+
+}
+
+df_crime_e2 <- df_results|>
+  mutate_if(is.factor, as.character) |>
+  group_by(Fecha_inicio, rings,min_diff_cat) |>
+  summarise(
+    n = n()
+  ) |>
+  ungroup() |>
+  group_by(Fecha_inicio, rings) |>
+  complete(
+    min_diff_cat = as.character(seq(from = -20, to = 20, by = 1))
+  )|>
+  ungroup() |>
+  mutate(
+    n = replace_na(n, 0),
+    Fecha_crimen = Fecha_inicio + hours(as.numeric(min_diff_cat))
+  )|>
+  mutate(
+    min_diff_num = as.numeric(
+      difftime(
+        time1 = Fecha_crimen,
+        time2 = Fecha_inicio,
+        units = "mins"
+      )
+    ),
+    end_game = case_when(
+      Fecha_inicio == Fecha_crimen ~ 1,
+      Fecha_inicio != Fecha_crimen ~ 0,
+      TRUE ~ NA_integer_
+    )
+  )
+
+
+
+  # mutate(
+  #   min_diff_cat = case_when(
+  #     as.numeric(min_diff_cat) < 0 ~ paste0("minus",gsub(pattern = "-", replacement = "", x = min_diff_cat)),
+  #     as.numeric(min_diff_cat) >= 0 ~ min_diff_cat,
+  #     TRUE ~ NA_character_
+  #   )
+  # )
+
+library(rddtools)
+
+
+# TOTAL
+
+data_reg <- df_crime_e2 |>
+  #rename("Time" = "min_diff_cat")  |>
+  #dummy_cols(dplyr::select_columns = "Time") |>
+  dplyr::select(n, rings, end_game, min_diff_num) |>
+  mutate(
+    min_diff_num_2 = min_diff_num^2,
+    min_diff_num_3 = min_diff_num^3,
+    min_diff_num_4 = min_diff_num^4,
+    end_game = as.character(end_game)
+  )
+
+xs_data_reg <-
+  data_reg |>
+  #dplyr::select(starts_with("min_diff"),-min_diff_num,end_game)|>
+  dplyr::select(end_game)
+
+rdd_df <- rdd_data(
+  y = n,
+  x = min_diff_num,
+  covar = xs_data_reg,
+  cutpoint = 0,
+  data = data_reg
+)
+
+rdd_reg <- rdd_reg_lm(
+  rdd_object = rdd_df,
+  covariates = TRUE,
+  slope = c("same")
+)
+
+summary(rdd_reg)
+
+rdd_reg <- rdd_reg_lm(
+  rdd_object = rdd_df,
+  covariates = TRUE,
+  slope = c("separate"),
+  order = 4
+)
+
+summary(rdd_reg)
+
+rdd_df |>
+  dplyr::select(y, x) |>
+  group_by(x) |>
+  summarise(y = sum(y)) |>
+  ungroup() |>
+  mutate(
+    threshold = as.character(case_when(
+      x > 0 ~ 1,
+      x < 0 ~ 0,
+      TRUE ~ NA_integer_
+    ))
+  ) |>
+  ggplot(aes(x = x, y = y, color = threshold)) +
+  geom_point() +
+  geom_smooth(
+    method = "lm",
+    formula = y ~ x + I(x ^2) + I(x ^3) + I(x ^4),
+    level = 0.95
+  ) +
+  scale_color_brewer(palette = "Accent")  +
+  guides(color = FALSE) +
+  geom_vline(
+    xintercept = 0,
+    color = "red",
+    size = 1,
+    linetype = "dashed"
+  ) +
+  labs(
+    y = "Total crimes",
+    x = "Minutes"
+  )
+
+library(rddensity)
+library(rdd)
+
+DCdensity(rdd_df$x, cutpoint = 0)
+
+density <- rddensity(rdd_df$x, c = 0)
+
+rdplotdensity(density, rdd_df$x)
+
+# RING 0
+
+data_reg <- df_crime_e2 |>
+  #rename("Time" = "min_diff_cat")  |>
+  #dummy_cols(dplyr::select_columns = "Time") |>
+  dplyr::select(n, rings, end_game, min_diff_num) |>
+  mutate(
+    min_diff_num_2 = min_diff_num^2,
+    min_diff_num_3 = min_diff_num^3,
+    min_diff_num_4 = min_diff_num^4,
+    end_game = as.character(end_game)
+  ) |>
+  filter(
+    rings == 0
+  )
+
+
+xs_data_reg <-
+  data_reg |>
+  #dplyr::select(starts_with("min_diff"),-min_diff_num,end_game)|>
+  dplyr::select(end_game)
+
+rdd_df <- rdd_data(
+  y = n,
+  x = min_diff_num,
+  covar = xs_data_reg,
+  cutpoint = 0,
+  data = data_reg
+)
+
+rdd_reg <- rdd_reg_lm(
+  rdd_object = rdd_df,
+  covariates = TRUE,
+  slope = c("same")
+)
+
+summary(rdd_reg)
+
+rdd_reg <- rdd_reg_lm(
+  rdd_object = rdd_df,
+  covariates = TRUE,
+  slope = c("separate"),
+  order = 4
+)
+
+summary(rdd_reg)
+
+
+
+rdd_df |>
+  dplyr::select(y, x) |>
+  group_by(x) |>
+  summarise(y = sum(y)) |>
+  ungroup() |>
+  mutate(
+    threshold = as.character(case_when(
+      x > 0 ~ 1,
+      x < 0 ~ 0,
+      TRUE ~ NA_integer_
+    ))
+  ) |>
+  ggplot(aes(x = x, y = y, color = threshold)) +
+  geom_point() +
+  geom_smooth(
+    method = "lm",
+    formula = y ~ x + I(x ^2) + I(x ^3) + I(x ^4),
+    level = 0.95
+  ) +
+  scale_color_brewer(palette = "Accent")  +
+  guides(color = FALSE) +
+  geom_vline(
+    xintercept = 0,
+    color = "red",
+    size = 1,
+    linetype = "dashed"
+  ) +
+  labs(
+    y = "Total crimes",
+    x = "Minutes"
+  )
+
+
+# RING 1
+
+data_reg <- df_crime_e2 |>
+  #rename("Time" = "min_diff_cat")  |>
+  #dummy_cols(dplyr::select_columns = "Time") |>
+  dplyr::select(n, rings, end_game, min_diff_num) |>
+  mutate(
+    min_diff_num_2 = min_diff_num^2,
+    min_diff_num_3 = min_diff_num^3,
+    min_diff_num_4 = min_diff_num^4,
+    end_game = as.character(end_game)
+  ) |>
+  filter(
+    rings == 1
+  )
+
+
+xs_data_reg <-
+  data_reg |>
+  #dplyr::select(starts_with("min_diff"),-min_diff_num,end_game)|>
+  dplyr::select(end_game)
+
+rdd_df <- rdd_data(
+  y = n,
+  x = min_diff_num,
+  covar = xs_data_reg,
+  cutpoint = 0,
+  data = data_reg
+)
+
+rdd_reg <- rdd_reg_lm(
+  rdd_object = rdd_df,
+  covariates = TRUE,
+  slope = c("same")
+)
+
+summary(rdd_reg)
+
+rdd_reg <- rdd_reg_lm(
+  rdd_object = rdd_df,
+  covariates = TRUE,
+  slope = c("separate"),
+  order = 4
+)
+
+summary(rdd_reg)
+
+
+rdd_df |>
+  dplyr::select(y, x) |>
+  group_by(x) |>
+  summarise(y = sum(y)) |>
+  ungroup() |>
+  mutate(
+    threshold = as.character(case_when(
+      x > 0 ~ 1,
+      x < 0 ~ 0,
+      TRUE ~ NA_integer_
+    ))
+  ) |>
+  ggplot(aes(x = x, y = y, color = threshold)) +
+  geom_point() +
+  geom_smooth(
+    method = "lm",
+    formula = y ~ x + I(x ^2) + I(x ^3) + I(x ^4),
+    level = 0.95
+  ) +
+  scale_color_brewer(palette = "Accent")  +
+  guides(color = FALSE) +
+  geom_vline(
+    xintercept = 0,
+    color = "red",
+    size = 1,
+    linetype = "dashed"
+  ) +
+  labs(
+    y = "Total crimes",
+    x = "Minutes"
+  )
+
+
+# RING 2
+
+data_reg <- df_crime_e2 |>
+  #rename("Time" = "min_diff_cat")  |>
+  #dummy_cols(dplyr::select_columns = "Time") |>
+  dplyr::select(n, rings, end_game, min_diff_num) |>
+  mutate(
+    min_diff_num_2 = min_diff_num^2,
+    min_diff_num_3 = min_diff_num^3,
+    min_diff_num_4 = min_diff_num^4,
+    end_game = as.character(end_game)
+  ) |>
+  filter(
+    rings == 2
+  )
+
+
+xs_data_reg <-
+  data_reg |>
+  #dplyr::select(starts_with("min_diff"),-min_diff_num,end_game)|>
+  dplyr::select(end_game)
+
+rdd_df <- rdd_data(
+  y = n,
+  x = min_diff_num,
+  covar = xs_data_reg,
+  cutpoint = 0,
+  data = data_reg
+)
+
+rdd_reg <- rdd_reg_lm(
+  rdd_object = rdd_df,
+  covariates = TRUE,
+  slope = c("same")
+)
+
+summary(rdd_reg)
+
+rdd_reg <- rdd_reg_lm(
+  rdd_object = rdd_df,
+  covariates = TRUE,
+  slope = c("separate"),
+  order = 4
+)
+
+summary(rdd_reg)
+
+
+rdd_df |>
+  dplyr::select(y, x) |>
+  group_by(x) |>
+  summarise(y = sum(y)) |>
+  ungroup() |>
+  mutate(
+    threshold = as.character(case_when(
+      x > 0 ~ 1,
+      x < 0 ~ 0,
+      TRUE ~ NA_integer_
+    ))
+  ) |>
+  ggplot(aes(x = x, y = y, color = threshold)) +
+  geom_point() +
+  geom_smooth(
+    method = "lm",
+    formula = y ~ x + I(x ^2) + I(x ^3) + I(x ^4),
+    #se = FALSE,
+    level = 0.95
+  )+
+  scale_color_brewer(palette = "Accent")  +
+  guides(color = FALSE) +
+  geom_vline(
+    xintercept = 0,
+    color = "red",
+    size = 1,
+    linetype = "dashed"
+  ) +
+  labs(
+    y = "Total crimes",
+    x = "Minutes"
+  )
+
+
+
+
+# RING 3
+
+data_reg <- df_crime_e2 |>
+  #rename("Time" = "min_diff_cat")  |>
+  #dummy_cols(dplyr::select_columns = "Time") |>
+  dplyr::select(n, rings, end_game, min_diff_num) |>
+  mutate(
+    min_diff_num_2 = min_diff_num^2,
+    min_diff_num_3 = min_diff_num^3,
+    min_diff_num_4 = min_diff_num^4,
+    end_game = as.character(end_game)
+  ) |>
+  filter(
+    rings == 3
+  )
+
+
+xs_data_reg <-
+  data_reg |>
+  #dplyr::select(starts_with("min_diff"),-min_diff_num,end_game)|>
+  dplyr::select(end_game)
+
+rdd_df <- rdd_data(
+  y = n,
+  x = min_diff_num,
+  covar = xs_data_reg,
+  cutpoint = 0,
+  data = data_reg
+)
+
+rdd_reg <- rdd_reg_lm(
+  rdd_object = rdd_df,
+  covariates = TRUE,
+  slope = c("same")
+)
+
+summary(rdd_reg)
+
+rdd_reg <- rdd_reg_lm(
+  rdd_object = rdd_df,
+  covariates = TRUE,
+  slope = c("separate"),
+  order = 4
+)
+
+summary(rdd_reg)
+
+
+rdd_df |>
+  dplyr::select(y, x) |>
+  group_by(x) |>
+  summarise(y = sum(y)) |>
+  ungroup() |>
+  mutate(
+    threshold = as.character(case_when(
+      x > 0 ~ 1,
+      x < 0 ~ 0,
+      TRUE ~ NA_integer_
+    ))
+  ) |>
+  ggplot(aes(x = x, y = y, color = threshold)) +
+  geom_point() +
+  geom_smooth(
+    method = "lm",
+    formula = y ~ x + I(x ^2) + I(x ^3) + I(x ^4),
+    level = 0.95
+  )+
+  scale_color_brewer(palette = "Accent")  +
+  guides(color = FALSE) +
+  geom_vline(
+    xintercept = 0,
+    color = "red",
+    size = 1,
+    linetype = "dashed"
+  ) +
+  labs(
+    y = "Total crimes",
+    x = "Minutes"
+  )
+
+
 ```
-
-<br>
-La unidad de analisis en este caso es el dia en que ocurrió el partido, es decir, cada fila es un dia en el que ocurre un partido de futbol que tiene asociadas las siguientes variables:
-
-```{r}
-names(historical_odds_colombia)
-```
-
-Los datos fueron extraidos de oddsportal.com (un sitio web dedicado procesar cuotas de alrededor de 30 casas de apuestas en multiples deportes).
-
-
-### Datos sociodemograficos sobre Santiago de Cali
-
-Estos datos se han descargado pero no se han usado o procesado. La idea con estos datos es tener un apoyo en caso de que se necesite caracterizar la zona cercana del estadio (estrato
-moda, gini, otros). Lo datos fueron descargados de Cali en Cifras.
