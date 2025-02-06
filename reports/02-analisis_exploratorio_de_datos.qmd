@@ -1,0 +1,126 @@
+---
+title: "Dinámica delictiva, eventos deportivos y euforia colectiva: evidencia de patrones criminales en torno a partidos de fútbol en Colombia"
+author: "Victor Sarmiento"
+date: last-modified
+abstract: > 
+  Este reporte contiene un análisis exploratorio de los datos
+  usados en la presente investigación.
+lang: es
+format: 
+  html:
+    code-fold: true
+    toc: true
+    html-math-method: katex
+    df-print: paged
+    self-contained: true
+execute:
+  warning: false
+---
+
+```{r}
+library(tidyverse)
+library(sf)
+library(lubridate)
+library(geosphere)
+library(fastDummies)
+library(DT)
+```
+
+## Datos
+
+A continuación se describen las fuentes de información usadas en esta investigación.
+
+### Homicidios georreferenciados en Santiago de Cali
+
+Puntualmente se cuenta con homicidios desde 2014 hasta mitad de 2024.
+
+```{r}
+homicidios <- read_rds(file = here::here("data/processed/homicidios.rds"))
+
+homicidios |> 
+  tail(100) |> 
+  datatable()
+```
+
+<br>
+La unidad de análisis es el hecho, es decir, cada fila es un evento criminal (en este caso un homicidio) que tiene asociadas las siguientes variables:
+
+
+```{r}
+names(homicidios)
+```
+
+Los datos fueron solicitados al Observatorio de Seguridad de la Alcaldia de Santiago de Cali.
+
+### Hurtos georreferenciados en Santiago de Cali
+
+Puntualmente se cuenta con hurtos georreferenciados desde 2019 hasta mitad de 2024, aunque solo hasta 2022 están georreferenciados.
+
+```{r}
+hurtos <- read_rds(file = here::here("data/processed/hurtos.rds"))
+
+hurtos |> 
+  tail(100) |> 
+  datatable()
+```
+
+<br>
+La unidad de análisis es el hecho, es decir, cada fila es un evento criminal (en este caso un hurto) que tiene asociadas las siguientes variables:
+
+```{r}
+names(hurtos)
+```
+
+Los datos fueron solicitados al Observatorio de Seguridad de la Alcaldia de Santiago de Cali.
+
+
+### Partidos de futbol profesional colombiano
+
+Puntualmente, se cuenta con una tabla que contiene información cada una de las fechas en las que hubo partidos de futbol que se jugaron en Colombia entre 2014 y 2023. 
+
+```{r}
+partidos <- read_rds(file = here::here("data/processed/game_characteristics.rds"))
+
+partidos |> 
+  tail(100) |> 
+  datatable()
+```
+
+<br>
+La unidad de analisis en este caso es el dia en que ocurrió el partido, es decir, cada fila es un dia en el que ocurre un partido de futbol que tiene asociadas las siguientes variables:
+
+```{r}
+names(partidos)
+```
+
+Los datos fueron extraidos de fbref.com (un sitio web dedicado al seguimiento de estadísticas de equipos de fútbol y jugadores de todo el mundo).
+
+### Cuotas de partidos del futbol profesional colombiano
+
+Puntualmente, se cuenta con una tabla que contiene información cada una de las fechas en las que hubo partidos de futbol que se jugaron en Colombia entre 2014 y 2023 junto a la respectiva cuota o probabilidad de ganar, empatar o perder, antes de iniciar el partido.
+
+```{r}
+historical_odds_colombia <- read_delim(
+  file = here::here("data/raw/historical_odds_colombia_primera_a.csv"),
+  delim = ';'
+)
+
+historical_odds_colombia |> 
+  tail(100) |> 
+  datatable()
+```
+
+<br>
+La unidad de analisis en este caso es el dia en que ocurrió el partido, es decir, cada fila es un dia en el que ocurre un partido de futbol que tiene asociadas las siguientes variables:
+
+```{r}
+names(historical_odds_colombia)
+```
+
+Los datos fueron extraidos de oddsportal.com (un sitio web dedicado procesar cuotas de alrededor de 30 casas de apuestas en multiples deportes).
+
+
+### Datos sociodemograficos sobre Santiago de Cali
+
+Estos datos se han descargado pero no se han usado o procesado. La idea con estos datos es tener un apoyo en caso de que se necesite caracterizar la zona cercana del estadio (estrato
+moda, gini, otros). Lo datos fueron descargados de Cali en Cifras.
