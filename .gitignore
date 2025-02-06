@@ -1,7 +1,6 @@
 .Rproj.user
 docs/
-input/
-output/
+data/
+!.gitkeep
 reports/html
 .Rhistory
-*.ini
