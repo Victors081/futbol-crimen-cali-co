@@ -1,6 +1,17 @@
 .Rproj.user
-docs/
-data/
-!.gitkeep
 reports/html
 .Rhistory
+# Ignorar todo dentro de data de forma recursiva
+data/**
+
+# Re-incluir todas las carpetas (para que Git pueda "ver" los .gitkeep)
+!data/**/
+
+# Re-incluir los archivos .gitkeep en cualquier subdirectorio
+!data/**/.gitkeep
+
+# Ignorar todo dentro de data de forma recursiva
+docs/**
+
+# Re-incluir los archivos .gitkeep en cualquier subdirectorio
+!docs/.gitkeep
