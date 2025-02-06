@@ -13,11 +13,11 @@ out_files <- gsub(
   x = in_files
 )
 
-quarto::quarto_render(
-  input = in_files,
-  output_format = "html",
-  output_file = out_files
-)
+# quarto::quarto_render(
+#   input = in_files,
+#   output_format = "html",
+#   output_file = out_files
+# )
 
 
 quarto_render_move <- function(
@@ -35,7 +35,7 @@ quarto_render_move <- function(
   input_dir <- dirname(input)
   if (is.null(output_dir)) { output_dir <- input_dir }
   output_path_from <- file.path(input_dir, output)
-  output_path_to <- file.path(output_dir, output_file)
+  output_path_to <- file.path(output_dir, output)
 
   # Render qmd file to input_dir
   quarto::quarto_render(input = input, ... = ...)
@@ -63,16 +63,16 @@ quarto_render_move <- function(
 }
 
 
-quarto::quarto_render(
-  input = in_files,
-  output_format = "html",
-  output_file = out_files
-)
+# quarto::quarto_render(
+#   input = in_files,
+#   output_format = "html",
+#   output_file = out_files
+# )
 
 quarto_render_move(
   input = in_files,
   output_file = out_files,
-  output_dir = "docs"
+  output_dir = "reports/html"
 )
 
 ## GROUP 1 ####
