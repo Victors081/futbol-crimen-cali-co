@@ -1,6 +1,6 @@
 .Rproj.user
 reports/html
-.Rhistory
+/.Rhistory
 # Ignorar todo dentro de data de forma recursiva
 data/**
 
@@ -15,3 +15,9 @@ docs/**
 
 # Re-incluir los archivos .gitkeep en cualquier subdirectorio
 !docs/.gitkeep
+
+# Ignorar la carpeta de bibliotecas de renv
+renv/library/
+
+# Ignorar archivos temporales generados por renv
+renv/.tmp/
