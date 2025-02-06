@@ -4,3 +4,4 @@ input/
 output/
 reports/html
 .Rhistory
+*.ini

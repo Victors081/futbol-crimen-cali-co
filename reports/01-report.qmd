@@ -1,7 +1,5 @@
 ---
-title: "Dinámica delictiva, eventos deportivos y euforia colectiva:
-evidencia de patrones criminales en torno a partidos de
-fútbol en Colombia"
+title: "Dinámica delictiva, eventos deportivos y euforia colectiva: evidencia de patrones criminales en torno a partidos de fútbol en Colombia"
 author: "Victor Sarmiento"
 date: last-modified
 lang: es
