@@ -27,6 +27,9 @@ library(geosphere)
 library(fastDummies)
 library(DT)
 library(MASS)
+library(performance)
+library(lmtest)
+library(sandwich)
 ```
 
 ## Datos
@@ -40,6 +43,8 @@ partidos <- read_rds(file = here::here("data/processed/game_characteristics.rds"
 ## Especificación Económetrica
 
 ### Estrategia 1
+
+::: {.panel-tabset}
 
 #### Crimenes consolidados
 
@@ -157,6 +162,10 @@ data_reg <-
 Luego calculamos una primera regresion suponiendo que no hay interacción entre los crimenes cerca o lejos del lugar
 del partido y el dia en el que hubo partido.
 
+::: {.panel-tabset}
+
+#### Estimación
+
 ```{r}
 
 m1 <- glm.nb(n ~ ring_1 + event + YEAR + MONTH + DOW, data = data_reg)
@@ -165,8 +174,33 @@ m1 <- glm.nb(n ~ ring_1 + event + YEAR + MONTH + DOW, data = data_reg)
 summary(m1)
 ```
 
+#### Pruebas econometricas
+
+```{r}
+model <- m1
+# 1. Evaluación de colinealidad y chequeos adicionales
+check_collinearity(model)
+
+# 2. Test de sobre-dispersión (si la binomial negativa es apropiada)
+dispersion_test <- 1 - (sum(residuals(model, type="pearson")^2) / model$df.residual)
+print(paste("Índice de sobre-dispersión:", dispersion_test))
+
+# 3. Test de heterocedasticidad con Breusch-Pagan
+bp_test <- bptest(model)
+print(bp_test)
+
+# 4. Intervalos de confianza robustos (HAC)
+coeftest(model, vcov = vcovHC(model, type = "HC1"))
+```
+
+:::
+
 Luego calculamos otra regresion permitiendo que interactuen los crimenes cerca o lejos del lugar
 del partido y el dia en el que hubo partido.
+
+::: {.panel-tabset}
+
+#### Estimación
 
 ```{r}
 
@@ -176,6 +210,27 @@ m2 <- glm.nb(n ~ ring_1 + event + ring_1 * event + YEAR + MONTH + DOW, data = da
 summary(m2)
 
 ```
+
+#### Pruebas econometricas
+
+```{r}
+model <- m2
+# 1. Evaluación de colinealidad y chequeos adicionales
+check_collinearity(model)
+
+# 2. Test de sobre-dispersión (si la binomial negativa es apropiada)
+dispersion_test <- 1 - (sum(residuals(model, type="pearson")^2) / model$df.residual)
+print(paste("Índice de sobre-dispersión:", dispersion_test))
+
+# 3. Test de heterocedasticidad con Breusch-Pagan
+bp_test <- bptest(model)
+print(bp_test)
+
+# 4. Intervalos de confianza robustos (HAC)
+coeftest(model, vcov = vcovHC(model, type = "HC1"))
+```
+
+:::
 
 #### Hurtos
 
@@ -235,12 +290,38 @@ data_reg <-
 Calculamos una regresion permitiendo que interactuen los hurtos cerca o lejos del lugar
 del partido y el dia en el que hubo partido.
 
+::: {.panel-tabset}
+
+#### Estimación
+
 ```{r}
 m3 <- glm.nb(n ~ ring_1 + event + ring_1 * event + YEAR + MONTH + DOW, data = data_reg)
 
 
 summary(m3)
 ```
+
+#### Pruebas econometricas
+
+```{r}
+
+model <- m3
+# 1. Evaluación de colinealidad y chequeos adicionales
+check_collinearity(model)
+
+# 2. Test de sobre-dispersión (si la binomial negativa es apropiada)
+dispersion_test <- 1 - (sum(residuals(model, type="pearson")^2) / model$df.residual)
+print(paste("Índice de sobre-dispersión:", dispersion_test))
+
+# 3. Test de heterocedasticidad con Breusch-Pagan
+bp_test <- bptest(model)
+print(bp_test)
+
+# 4. Intervalos de confianza robustos (HAC)
+coeftest(model, vcov = vcovHC(model, type = "HC1"))
+```
+
+:::
 
 #### Homicidios
 
@@ -300,6 +381,10 @@ data_reg <-
 Calculamos una regresion permitiendo que interactuen los homicidios cerca o lejos del lugar
 del partido y el dia en el que hubo partido.
 
+::: {.panel-tabset}
+
+#### Estimación
+
 ```{r}
 
 m4 <- glm.nb(n ~ ring_1 + event + ring_1 * event + YEAR + MONTH + DOW, data = data_reg)
@@ -308,13 +393,33 @@ m4 <- glm.nb(n ~ ring_1 + event + ring_1 * event + YEAR + MONTH + DOW, data = da
 summary(m4)
 ```
 
-### Estrategia 2
-
+#### Pruebas econometricas
 ```{r}
 
-# ECONOMETRIC ANALYSIS
+model <- m4
+# 1. Evaluación de colinealidad y chequeos adicionales
+check_collinearity(model)
+
+# 2. Test de sobre-dispersión (si la binomial negativa es apropiada)
+dispersion_test <- 1 - (sum(residuals(model, type="pearson")^2) / model$df.residual)
+print(paste("Índice de sobre-dispersión:", dispersion_test))
+
+# 3. Test de heterocedasticidad con Breusch-Pagan
+bp_test <- bptest(model)
+print(bp_test)
+
+# 4. Intervalos de confianza robustos (HAC)
+coeftest(model, vcov = vcovHC(model, type = "HC1"))
+```
+
+:::
+
+:::
+
+### Estrategia 2
 
 
+```{r}
 # ESTRATEGIA 2
 
 fechas_partidos <- partidos_america |>
@@ -444,27 +549,192 @@ formula <- as.formula(
   )
 )
 
-mf <- lm(formula, data = data_reg)
+```
 
-summary(mf)
+::: {.panel-tabset}
+
+#### Crimenes totales
+
+::: {.panel-tabset}
+
+#### Estimación
+```{r}
+
+mr_t <- lm(formula, data = data_reg)
+
+summary(mr_t)
+
+```
+
+#### Pruebas econometricas
+
+```{r}
+
+model <- mr_t
+# 1. Evaluación de colinealidad y chequeos adicionales
+check_collinearity(model)
+
+# 2. Test de sobre-dispersión (si la binomial negativa es apropiada)
+dispersion_test <- 1 - (sum(residuals(model, type="pearson")^2) / model$df.residual)
+print(paste("Índice de sobre-dispersión:", dispersion_test))
+
+# 3. Test de heterocedasticidad con Breusch-Pagan
+bp_test <- bptest(model)
+print(bp_test)
+
+# 4. Intervalos de confianza robustos (HAC)
+coeftest(model, vcov = vcovHC(model, type = "HC1"))
+```
+
+:::
+
+#### Crimenes: ring 0
+
+::: {.panel-tabset}
+
+#### Estimación
+```{r}
 
 mr_0 <- lm(formula, data = data_reg |> filter(rings == 0))
 
 summary(mr_0)
 
+```
+
+#### Pruebas econometricas
+
+```{r}
+
+model <- mr_0
+# 1. Evaluación de colinealidad y chequeos adicionales
+check_collinearity(model)
+
+# 2. Test de sobre-dispersión (si la binomial negativa es apropiada)
+dispersion_test <- 1 - (sum(residuals(model, type="pearson")^2) / model$df.residual)
+print(paste("Índice de sobre-dispersión:", dispersion_test))
+
+# 3. Test de heterocedasticidad con Breusch-Pagan
+bp_test <- bptest(model)
+print(bp_test)
+
+# 4. Intervalos de confianza robustos (HAC)
+coeftest(model, vcov = vcovHC(model, type = "HC1"))
+```
+
+:::
+
+#### Crimenes: ring 1
+
+::: {.panel-tabset}
+
+#### Estimación
+```{r}
+
 mr_1 <- lm(formula, data = data_reg |> filter(rings == 1))
 
 summary(mr_1)
+
+```
+
+#### Pruebas econometricas
+
+```{r}
+
+model <- mr_1
+# 1. Evaluación de colinealidad y chequeos adicionales
+check_collinearity(model)
+
+# 2. Test de sobre-dispersión (si la binomial negativa es apropiada)
+dispersion_test <- 1 - (sum(residuals(model, type="pearson")^2) / model$df.residual)
+print(paste("Índice de sobre-dispersión:", dispersion_test))
+
+# 3. Test de heterocedasticidad con Breusch-Pagan
+bp_test <- bptest(model)
+print(bp_test)
+
+# 4. Intervalos de confianza robustos (HAC)
+coeftest(model, vcov = vcovHC(model, type = "HC1"))
+```
+
+:::
+
+#### Crimenes: ring 2
+
+::: {.panel-tabset}
+
+#### Estimación
+```{r}
 
 mr_2 <- lm(formula, data = data_reg |> filter(rings == 2))
 
 summary(mr_2)
 
+```
+
+#### Pruebas econometricas
+
+```{r}
+
+model <- mr_2
+# 1. Evaluación de colinealidad y chequeos adicionales
+check_collinearity(model)
+
+# 2. Test de sobre-dispersión (si la binomial negativa es apropiada)
+dispersion_test <- 1 - (sum(residuals(model, type="pearson")^2) / model$df.residual)
+print(paste("Índice de sobre-dispersión:", dispersion_test))
+
+# 3. Test de heterocedasticidad con Breusch-Pagan
+bp_test <- bptest(model)
+print(bp_test)
+
+# 4. Intervalos de confianza robustos (HAC)
+coeftest(model, vcov = vcovHC(model, type = "HC1"))
+```
+
+:::
+
+#### Crimenes: ring 3
+
+::: {.panel-tabset}
+
+#### Estimación
+```{r}
+
 mr_3 <- lm(formula, data = data_reg |> filter(rings == 3))
 
 summary(mr_3)
 
+```
 
+#### Pruebas econometricas
+
+```{r}
+
+model <- mr_3
+# 1. Evaluación de colinealidad y chequeos adicionales
+check_collinearity(model)
+
+# 2. Test de sobre-dispersión (si la binomial negativa es apropiada)
+dispersion_test <- 1 - (sum(residuals(model, type="pearson")^2) / model$df.residual)
+print(paste("Índice de sobre-dispersión:", dispersion_test))
+
+# 3. Test de heterocedasticidad con Breusch-Pagan
+bp_test <- bptest(model)
+print(bp_test)
+
+# 4. Intervalos de confianza robustos (HAC)
+coeftest(model, vcov = vcovHC(model, type = "HC1"))
+```
+
+:::
+
+:::
+
+### Estrategia 3
+
+```{r}
+
+# ECONOMETRIC ANALYSIS
 
 # ESTRATEGIA 3
 
@@ -570,19 +840,15 @@ df_crime_e2 <- df_results|>
       TRUE ~ NA_integer_
     )
   )
+```
+
+::: {.panel-tabset}
 
 
-
-  # mutate(
-  #   min_diff_cat = case_when(
-  #     as.numeric(min_diff_cat) < 0 ~ paste0("minus",gsub(pattern = "-", replacement = "", x = min_diff_cat)),
-  #     as.numeric(min_diff_cat) >= 0 ~ min_diff_cat,
-  #     TRUE ~ NA_character_
-  #   )
-  # )
+#### Crimenes: total
+```{r}
 
 library(rddtools)
-
 
 # TOTAL
 
@@ -667,6 +933,12 @@ DCdensity(rdd_df$x, cutpoint = 0)
 density <- rddensity(rdd_df$x, c = 0)
 
 rdplotdensity(density, rdd_df$x)
+```
+
+
+#### Crimenes: ring 0
+
+```{r}
 
 # RING 0
 
@@ -750,6 +1022,12 @@ rdd_df |>
   )
 
 
+```
+
+#### Crimenes: ring 1
+
+```{r}
+
 # RING 1
 
 data_reg <- df_crime_e2 |>
@@ -830,6 +1108,12 @@ rdd_df |>
     x = "Minutes"
   )
 
+
+```
+
+#### Crimenes: ring 2
+
+```{r}
 
 # RING 2
 
@@ -912,8 +1196,11 @@ rdd_df |>
     x = "Minutes"
   )
 
+```
 
+#### Crimenes: ring 3
 
+```{r}
 
 # RING 3
 
@@ -997,3 +1284,5 @@ rdd_df |>
 
 
 ```
+
+:::
