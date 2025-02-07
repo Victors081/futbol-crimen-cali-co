@@ -221,6 +221,22 @@
       ],
       "Hash": "543776ae6848fde2f48ff3816d0628bc"
     },
+    "bayestestR": {
+      "Package": "bayestestR",
+      "Version": "0.15.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": [
+        "R",
+        "datawizard",
+        "graphics",
+        "insight",
+        "methods",
+        "stats",
+        "utils"
+      ],
+      "Hash": "0d24e07b3a2c50fb6221787c9fd4f69a"
+    },
     "bit": {
       "Package": "bit",
       "Version": "4.0.5",
@@ -536,6 +552,19 @@
         "methods"
       ],
       "Hash": "b4c06e554f33344e044ccd7fdca750a9"
+    },
+    "datawizard": {
+      "Package": "datawizard",
+      "Version": "1.0.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": [
+        "R",
+        "insight",
+        "stats",
+        "utils"
+      ],
+      "Hash": "8a37ad13b9b0db70bf32d6eb2fc0a2aa"
     },
     "dbplyr": {
       "Package": "dbplyr",
@@ -1058,6 +1087,19 @@
       ],
       "Hash": "99df65cfef20e525ed38c3d2577f7190"
     },
+    "insight": {
+      "Package": "insight",
+      "Version": "1.0.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": [
+        "R",
+        "methods",
+        "stats",
+        "utils"
+      ],
+      "Hash": "ba2606f588c01adc84699ed43e8d162a"
+    },
     "isoband": {
       "Package": "isoband",
       "Version": "0.2.7",
@@ -1215,19 +1257,6 @@
         "stats"
       ],
       "Hash": "17d0b367b6e079f5bd91a533e16a13ae"
-    },
-    "lorem": {
-      "Package": "lorem",
-      "Version": "1.0.0",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Requirements": [
-        "R",
-        "htmltools",
-        "knitr",
-        "stats"
-      ],
-      "Hash": "7784700efa54d1c2ed98fa6755e8bb32"
     },
     "lpdensity": {
       "Package": "lpdensity",
@@ -1429,6 +1458,21 @@
         "parallel"
       ],
       "Hash": "3b5b99f4d3f067bb9c1d59317d071370"
+    },
+    "performance": {
+      "Package": "performance",
+      "Version": "0.13.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": [
+        "R",
+        "bayestestR",
+        "datawizard",
+        "insight",
+        "stats",
+        "utils"
+      ],
+      "Hash": "35de0c9474563ca8054029abb0b6e72c"
     },
     "pillar": {
       "Package": "pillar",
